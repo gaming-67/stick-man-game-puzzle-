@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stick Puzzle Fight - Multi-Level</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#0f1724;color:#fff;font-family:sans-serif;}
+  canvas{display:block;background:#0f1724;}
+  #menu{
+    position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;background:rgba(0,0,0,.7);
+  }
+  h1{font-size:32px;margin-bottom:20px;}
+  .skin-select{display:flex;gap:8px;margin-bottom:10px;}
+  select{padding:6px 10px;font-size:16px;border-radius:6px;border:none;}
+  button{margin:6px;padding:12px 24px;font-size:18px;border:none;border-radius:6px;background:#3b82f6;color:white;cursor:pointer;}
+  button:hover{background:#2563eb;}
+</style>
+</head>
+<body>
+<div id="menu">
+  <h1>Stick Puzzle Fight</h1>
+  <div class="skin-select">
+    <label>Player 1 Skin:</label>
+    <select id="p1Skin">
+      <option value="classic">Classic</option>
+      <option value="ninja">Ninja</option>
+      <option value="cyborg">Cyborg</option>
+      <option value="hero">Hero</option>
+      <option value="royal">Royal</option>
+    </select>
+  </div>
+  <div class="skin-select">
+    <label>Player 2 Skin:</label>
+    <select id="p2Skin">
+      <option value="classic">Classic</option>
+      <option value="ninja">Ninja</option>
+      <option value="cyborg">Cyborg</option>
+      <option value="hero">Hero</option>
+      <option value="royal">Royal</option>
+    </select>
+  </div>
+  <button id="btn1p">1 Player</button>
+  <button id="btn2p">2 Players</button>
+</div>
+<canvas id="game"></canvas>
+
+<script>
+const canvas=document.getElementById('game');
+const ctx=canvas.getContext('2d');
+canvas.width=innerWidth; canvas.height=innerHeight;
+
+let running=false;
+let players=[],platforms=[],boxes=[],switches=[],doors=[];
+let level=0;
+const gravity=0.8;
+const keys={};
+onkeydown=e=>keys[e.code]=true;
+onkeyup=e=>keys[e.code]=false;
+
+// SKINS
+const skins={
+  classic:{color:'white'},
+  ninja:{color:'black'},
+  cyborg:{color:'silver'},
+  hero:{color:'red'},
+  royal:{color:'gold'}
+};
+
+// PLAYER CREATION
+function makePlayer(x,color,controls,name,skin){
+  return {x,y:100,w:20,h:50,vx:0,vy:0,color,controls,onGround:false,name,skin};
+}
+
+// LEVELS
+function makeLevel(){
+  const g=canvas.height-60;
+  platforms=[]; boxes=[]; switches=[]; doors=[];
+  if(level===0){
+    platforms=[
+      {x:0,y:g,w:canvas.width,h:60},
+      {x:200,y:g-150,w:250,h:15},
+      {x:700,y:g-250,w:200,h:15},
+      {x:1200,y:g-350,w:250,h:15},
+    ];
+    boxes=[{x:220,y:g-190,w:40,h:40,vx:0,vy:0}];
+    switches=[{x:1220,y:g-380,w:30,h:5,active:false}];
+    doors=[{x:1450,y:g-410,w:60,h:100,open:false}];
+  } else if(level===1){
+    platforms=[
+      {x:0,y:g,w:canvas.width,h:60},
+      {x:150,y:g-120,w:200,h:15,dir:1,range:100}, // moving platform
+      {x:600,y:g-200,w:250,h:15},
+      {x:1000,y:g-280,w:200,h:15,dir:1,range:150},
+    ];
+    boxes=[{x:160,y:g-160,w:40,h:40,vx:0,vy:0},{x:620,y:g-240,w:40,h:40,vx:0,vy:0}];
+    switches=[{x:1020,y:g-310,w:30,h:5,active:false}];
+    doors=[{x:1200,y:g-360,w:60,h:100,open:false}];
+  } else if(level>=2){
+    platforms=[
+      {x:0,y:g,w:canvas.width,h:60},
+      {x:200,y:g-150,w:250,h:15},
+      {x:500,y:g-250,w:200,h:15},
+      {x:800,y:g-350,w:200,h:15},
+      {x:1100,y:g-400,w:250,h:15},
+    ];
+    boxes=[{x:220,y:g-190,w:40,h:40,vx:0,vy:0},{x:520,y:g-290,w:40,h:40,vx:0,vy:0},{x:820,y:g-390,w:40,h:40,vx:0,vy:0}];
+    switches=[{x:1120,y:g-430,w:30,h:5,active:false}];
+    doors=[{x:1350,y:g-460,w:60,h:100,open:false}];
+  }
+}
+
+// START GAME
+function startGame(mode){
+  document.getElementById('menu').style.display='none';
+  running=true;
+  const p1Skin=document.getElementById('p1Skin').value;
+  const p2Skin=document.getElementById('p2Skin').value;
+  players=[makePlayer(100,skins[p1Skin].color,{left:'ArrowLeft',right:'ArrowRight',jump:'ArrowUp'},'Sticko',p1Skin)];
+  if(mode==='2p') players.push(makePlayer(200,skins[p2Skin].color,{left:'KeyA',right:'KeyD',jump:'KeyW'},'Flex',p2Skin));
+  level=0;
+  makeLevel();
+  loop();
+}
+
+// UPDATE PLAYER
+function updatePlayer(p){
+  const spd=5;
+  if(keys[p.controls.left]) p.vx=-spd;
+  else if(keys[p.controls.right]) p.vx=spd;
+  else p.vx=0;
+  if(keys[p.controls.jump] && p.onGround){p.vy=-15; p.onGround=false;}
+  p.vy+=gravity;
+  p.x+=p.vx;
+  p.y+=p.vy;
+
+  // Platform collision
+  p.onGround=false;
+  for(const plat of platforms){
+    if(p.x+p.w>plat.x && p.x<plat.x+plat.w && p.y+p.h>plat.y && p.y+p.h<plat.y+20 && p.vy>=0){
+      p.y=plat.y-p.h; p.vy=0; p.onGround=true;
+    }
+    // Moving platform
+    if(plat.dir){
+      plat.x+=plat.dir*2;
+      if(plat.x<plat.original) plat.dir=1;
+      if(plat.x>plat.original+plat.range) plat.dir=-1;
+    }
+  }
+
+  // Stand on other players
+  for(const o of players){if(o!==p && p.x+p.w>o.x && p.x<o.x+o.w && p.y+p.h>o.y && p.y+p.h<o.y+20 && p.vy>=0){p.y=o.y-p.h; p.vy=0; p.onGround=true;}}
+
+  // Push boxes
+  for(const b of boxes){
+    if(p.x+p.w>b.x && p.x<b.x+b.w && p.y+p.h>b.y && p.y<b.y+b.h){
+      if(p.vx>0) b.x=p.x+p.w;
+      if(p.vx<0) b.x=p.x-b.w;
+      p.vy=0;
+    }
+  }
+}
+
+// UPDATE BOX
+function updateBox(b){
+  b.vy+=gravity;
+  b.y+=b.vy;
+  b.vx*=0.9;
+  for(const plat of platforms){
+    if(b.x+b.w>plat.x && b.x<plat.x+plat.w && b.y+b.h>plat.y && b.y+b.h<plat.y+20 && b.vy>=0){
+      b.y=plat.y-b.h; b.vy=0;
+    }
+  }
+}
+
+// DRAW FUNCTIONS
+function drawStick(p){
+  const cx=p.x+p.w/2;
+  ctx.strokeStyle=p.color; ctx.lineWidth=3;
+  ctx.fillStyle='white'; ctx.font='14px sans-serif';
+  ctx.fillText(p.name,cx-15,p.y-10);
+  ctx.beginPath(); ctx.arc(cx,p.y+10,8,0,Math.PI*2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx,p.y+18); ctx.lineTo(cx,p.y+38); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx,p.y+25); ctx.lineTo(cx-10,p.y+35); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx,p.y+25); ctx.lineTo(cx+10,p.y+35); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx,p.y+38); ctx.lineTo(cx-8,p.y+50); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx,p.y+38); ctx.lineTo(cx+8,p.y+50); ctx.stroke();
+}
+
+function drawPlatform(p){ctx.fillStyle='#1e293b'; ctx.fillRect(p.x,p.y,p.w,p.h);}
+function drawBox(b){ctx.fillStyle='#eab308'; ctx.fillRect(b.x,b.y,b.w,b.h);}
+function drawSwitch(s){ctx.fillStyle=s.active?'#22c55e':'#f87171'; ctx.fillRect(s.x,s.y,s.w,s.h);}
+function drawDoor(d){ctx.fillStyle=d.open?'#22c55e':'#475569'; ctx.fillRect(d.x,d.y,d.w,d.h);}
+
+// SWITCH LOGIC
+function checkSwitches(){
+  for(const s of switches){s.active=false;for(const b of boxes){if(b.x+b.w>s.x && b.x<s.x+s.w && b.y+b.h>s.y) s.active=true;}}
+  for(const d of doors){d.open=switches.some(sw=>sw.active);}
+}
+
+// CHECK LEVEL COMPLETION
+function checkLevelComplete(){
+  for(const d of doors){
+    if(d.open && players.some(p=>p.x>d.x && p.x<d.x+d.w && p.y+p.h>d.y)){
+      level++; makeLevel();
+    }
+  }
+}
+
+// GAME LOOP
+function loop(){
+  if(!running) return;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  for(const plat of platforms) drawPlatform(plat);
+  for(const b of boxes){updateBox(b); drawBox(b);}
+  for(const s of switches) drawSwitch(s);
+  for(const d of doors) drawDoor(d);
+  for(const p of players){updatePlayer(p); drawStick(p);}
+  checkSwitches();
+  checkLevelComplete();
+  requestAnimationFrame(loop);
+}
+
+// BUTTONS
+document.getElementById('btn1p').onclick=()=>startGame('1p');
+document.getElementById('btn2p').onclick=()=>startGame('2p');
+</script>
+</body>
+</html>
